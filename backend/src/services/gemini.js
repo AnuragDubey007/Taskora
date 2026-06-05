@@ -138,7 +138,11 @@ FAILURE HANDLING:
 
 // ── Main chat function ────────────────────────────────────────
 // conversationHistory = array of { role, parts } objects
-async function chat(userMessage, conversationHistory = []) {
+  async function chat(
+    userMessage,
+    conversationHistory = [],
+    userId
+  ) {
 
   // Append new user message to history
   const messages = [
@@ -156,12 +160,21 @@ async function chat(userMessage, conversationHistory = []) {
     }
   })
 
-  const candidate = response.candidates[0].content
-  const parts     = candidate.parts
+  const candidate = response.candidates?.[0]?.content
+  const parts     = candidate?.parts || []
+
+
+  if (parts.length === 0) {
+   throw new Error('Empty Gemini response')
+  }
+
+
 
   // ── Tool call branch ──────────────────────────────────────
   // ── Handle MULTIPLE tool calls (e.g. "create 3 tasks") ───────
-const toolCallParts = parts.filter(p => p.functionCall)
+const toolCallParts = (parts || []).filter(
+  p => p.functionCall
+)
 
 if (toolCallParts.length > 0) {
   let messagesWithTools = [...messages]
@@ -171,7 +184,10 @@ if (toolCallParts.length > 0) {
   for (const toolCallPart of toolCallParts) {
     const { name, args } = toolCallPart.functionCall
   
-    const toolResult = await toolFunctions[name](args)
+    const toolResult = await toolFunctions[name]({
+      ...args,
+      userId
+    })
     
 
     messagesWithTools = [
@@ -189,7 +205,11 @@ if (toolCallParts.length > 0) {
     config: { systemInstruction: getSystemPrompt() }
   })
 
-  const replyText = finalResponse.candidates[0].content.parts[0].text
+  const finalParts = finalResponse.candidates?.[0]?.content?.parts || []
+const replyText = finalParts.find(p => p.text)?.text
+if (!replyText) throw new Error('No text returned from Gemini after tool call')
+
+
   const completeHistory = [
     ...messagesWithTools,
     { role: 'model', parts: [{ text: replyText }] }
@@ -199,7 +219,13 @@ if (toolCallParts.length > 0) {
 }
 
   // ── Plain text response (no tool call) ───────────────────
-  const replyText = parts[0].text
+  const replyText =
+  parts.find(p => p.text)?.text
+
+  if (!replyText) {
+    throw new Error('No text returned from Gemini')
+  }
+
   return {
     reply:   replyText,
     action:  null,

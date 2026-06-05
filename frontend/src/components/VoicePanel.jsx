@@ -5,6 +5,7 @@
 // ============================================
 
 import { Mic, MicOff } from 'lucide-react'
+import { useRef, useEffect } from 'react'
 
 function VoicePanel({
   isListening,
@@ -16,6 +17,12 @@ function VoicePanel({
   onMicClick,
   onEndClick,
 }) {
+
+    const messagesEndRef = useRef(null)
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [messages, isThinking])
 
   function getStatusLabel() {
     if (!isConnected) return 'Connecting...'
@@ -97,6 +104,7 @@ function VoicePanel({
                 </div>
               </div>
             ))}
+            <div ref={messagesEndRef} />   {/* ← add this at the very end */}
           </div>
 
         </div>

@@ -1,6 +1,7 @@
 // frontend/src/hooks/useVoiceAgent.js
 import { useState, useEffect, useRef } from 'react'
 import useTaskStore from '../store/taskStore'
+import useAuthStore from '../store/authStore'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -32,6 +33,7 @@ function useVoiceAgent() {
   const setConfirmCard  = useTaskStore(s => s.setConfirmCard)
   const setDeletingId   = useTaskStore(s => s.setDeletingId)
   const setUpdatingId   = useTaskStore(s => s.setUpdatingId)
+  const token = useAuthStore(s => s.token)
 
   useEffect(() => { isListeningRef.current = isListening }, [isListening])
   useEffect(() => { isSpeakingRef.current  = isSpeaking  }, [isSpeaking])
@@ -48,7 +50,11 @@ function useVoiceAgent() {
   // Load tasks
   useEffect(() => {
     setLoading(true)
-    fetch(`${API_URL}/api/tasks`)
+    fetch(`${API_URL}/api/tasks`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
       .then(r => r.json())
       .then(d => { if (d.tasks) setTasks(d.tasks) })
       .catch(console.error)
@@ -255,14 +261,22 @@ function speakWithBrowser(text, sessionId, onDone) {
       if (actionData.taskId) setDeletingId(actionData.taskId)
       setConfirmCard({ title: 'Task Deleted', desc: actionData.message || 'Task removed', glow: 'delete-glow' })
       setTimeout(() => {
-        fetch(`${API_URL}/api/tasks`).then(r => r.json()).then(d => { if (d.tasks) setTasks(d.tasks) })
+        fetch(`${API_URL}/api/tasks`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }).then(r => r.json()).then(d => { if (d.tasks) setTasks(d.tasks) })
         setDeletingId(null)
         setConfirmCard(null)
       }, 1500)
     }
 
     if (action === 'get_all_tasks') {
-      fetch(`${API_URL}/api/tasks`).then(r => r.json()).then(d => { if (d.tasks) setTasks(d.tasks) })
+      fetch(`${API_URL}/api/tasks`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }).then(r => r.json()).then(d => { if (d.tasks) setTasks(d.tasks) })
     }
   }
 
@@ -275,7 +289,10 @@ function speakWithBrowser(text, sessionId, onDone) {
     try {
       const res = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
         body: JSON.stringify({ message: userText, history: historyRef.current })
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -287,7 +304,7 @@ function speakWithBrowser(text, sessionId, onDone) {
       if (data.action) handleAction(data.action, data.actionData)
       // If action was just a search (no delete/update followed), dismiss confirm card after speaking
       if (data.action === 'find_tasks_by_name' && !data.actionData?.deleted) {
-        setTimeout(() => setConfirmCard(null), 10000)
+        setTimeout(() => setConfirmCard(null), 20000)
       }
 
 

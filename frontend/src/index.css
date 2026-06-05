@@ -39,13 +39,14 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 7px 14px;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
   color: #ffffff;
+  letter-spacing: 0.05em;
 }
 
 /* ── Glass task card ─────────────────────────── */
@@ -356,9 +357,9 @@
 }
 .confirm-card {
   position: fixed;
-  bottom: 140px;
+  top: 40%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   z-index: 200;
   background: rgba(10,10,10,0.98);
   backdrop-filter: blur(30px);
@@ -422,3 +423,92 @@
   border-color: rgba(99,102,241,0.5);
   box-shadow: 0 0 60px rgba(99,102,241,0.3), inset 0 0 30px rgba(99,102,241,0.1);
 }
+
+
+/* ── Auth pages ──────────────────────────────── */
+.auth-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 25%, #0f0f1e 50%, #0a0a0a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 24px;
+  padding: 40px;
+  backdrop-filter: blur(20px);
+}
+
+.auth-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 6px;
+}
+
+.auth-input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease;
+  font-family: 'Outfit', sans-serif;
+}
+
+.auth-input::placeholder { color: rgba(255,255,255,0.25); }
+.auth-input:focus { border-color: rgba(255,255,255,0.25); }
+
+.auth-btn {
+  width: 100%;
+  padding: 14px;
+  background: #fff;
+  color: #000;
+  font-weight: 700;
+  font-size: 14px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.auth-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+.auth-error {
+  font-size: 12px;
+  color: rgba(239,68,68,0.8);
+  margin-top: 4px;
+}
+
+.auth-switch {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.3);
+}
+
+.auth-link {
+  color: rgba(255,255,255,0.7);
+  font-weight: 600;
+  text-decoration: none;
+  margin-left: 4px;
+}
+
+.auth-link:hover { color: #fff; }
