@@ -12,7 +12,9 @@ A production-ready voice-controlled task manager where every action — create, 
 **Frontend:** https://taskora-dusky.vercel.app
 
 **Backend API:** https://taskora-0kde.onrender.com
-
+> ⚠️ **Note for Reviewers:** The live demo uses a shared Gemini API key which may be exhausted.
+> For guaranteed functionality, clone the repo and add your own `GEMINI_API_KEY` in the backend `.env` file.
+> Setup takes under 5 minutes — instructions below.
 ---
 
 ## What It Does
