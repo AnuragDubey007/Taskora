@@ -12,7 +12,10 @@ const app  = express()
 const PORT = process.env.PORT || 3001
 
 // ── Middleware ────────────────────────────────────────────────
-app.use(cors())
+app.use(cors({
+  origin: ['https://taskora-dusky.vercel.app', 'http://localhost:5173']
+}))
+
 app.use(express.json({ limit: '1mb' }))
 
 // ── Health check ──────────────────────────────────────────────
@@ -40,12 +43,7 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Message is required' })
     }
 
-    console.log('📩 User said:', message)
-
     const result = await chat(message, history)
-
-    console.log('🤖 Jarvis replied:', result.reply)
-    console.log('🎬 Action taken:', result.action || 'none')
 
     res.json({
       success:    true,
@@ -56,7 +54,7 @@ app.post('/api/chat', async (req, res) => {
     })
 
   } catch (error) {
-    console.error('❌ Chat error:', error.message)
+    console.error('Chat error:', error.message)
     res.status(500).json({ success: false, message: error.message })
   }
 })
@@ -130,8 +128,6 @@ app.post('/api/tts', async (req, res) => {
 
       const data = await response.json()
       const audioB64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data
-    console.log('Gemini TTS keys:', JSON.stringify(Object.keys(data)))
-console.log('Gemini TTS audio exists:', !!data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data)
       if (audioB64) {
         const buf = Buffer.from(audioB64, 'base64')
         res.set('Content-Type', 'audio/wav')
@@ -149,22 +145,10 @@ console.log('Gemini TTS audio exists:', !!data?.candidates?.[0]?.content?.parts?
   res.status(503).json({ message: 'TTS unavailable, use browser fallback' })
 })
 
-console.log('ENV check:', {
-  mongo: !!process.env.MONGO_URI,
-  gemini: !!process.env.GEMINI_API_KEY,
-})
-
-
-// Debug all requests
-app.use((req, res, next) => {
-  console.log(`[REQ] ${req.method} ${req.path}`, req.body?.message || '')
-  next()
-})
-
 
 // ── Start server ──────────────────────────────────────────────
 connectDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`)
+    console.log(`Server running on http://localhost:${PORT}`)
   })
 })

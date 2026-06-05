@@ -75,8 +75,7 @@ function useVoiceAgent() {
  // Replace speakWithBrowser in your hook
 
 function speakWithBrowser(text, sessionId, onDone) {
-  console.log('[TTS:browser] called from:', new Error().stack.split('\n')[2])
-  console.log('[TTS:browser] Speaking:', text.slice(0, 60))
+  
   if (speakSessionRef.current !== sessionId) { onDone(); return }
 
   const voices = window.speechSynthesis.getVoices()
@@ -223,7 +222,6 @@ function speakWithBrowser(text, sessionId, onDone) {
   async function speakText(text) {
     stopAudio()
     const sessionId = speakSessionRef.current
-    console.log('[TTS] Speaking (session', sessionId, '):', text)
     return new Promise(resolve => {
       speakWithBrowser(text, sessionId, resolve)
     })
@@ -232,7 +230,7 @@ function speakWithBrowser(text, sessionId, onDone) {
 
   function handleAction(action, actionData) {
     if (!action || !actionData) return
-    console.log('[ACTION]', action, actionData)
+    
 
     if (action === 'find_tasks_by_name' && actionData.tasks?.length > 0) {
       const task = actionData.tasks[0]
@@ -273,7 +271,6 @@ function speakWithBrowser(text, sessionId, onDone) {
     setIsThinking(true)
     isThinkingRef.current = true
     addMessage('user', userText)
-    console.log('[CHAT] Sending:', userText)
 
     try {
       const res = await fetch(`${API_URL}/api/chat`, {
@@ -294,7 +291,6 @@ function speakWithBrowser(text, sessionId, onDone) {
       }
 
 
-      console.log('[CHAT] Reply:', data.reply)
       await speakText(data.reply)
 
     } catch (err) {
@@ -330,7 +326,6 @@ function speakWithBrowser(text, sessionId, onDone) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) { alert('Use Chrome or Edge for voice input.'); return }
     if (isListeningRef.current || isThinkingRef.current || isSpeakingRef.current) {
-      console.log('[STT] Skipping start — busy')
       return
     }
 
@@ -344,7 +339,6 @@ function speakWithBrowser(text, sessionId, onDone) {
     recognitionRef.current = recognition
 
     recognition.onstart = () => {
-      console.log('[STT] Started listening')
       setIsListening(true)
       isListeningRef.current = true
     }
@@ -352,7 +346,6 @@ function speakWithBrowser(text, sessionId, onDone) {
     recognition.onresult = (event) => {
       clearTimeout(noSpeechTimer.current)
       const text = event.results[0][0].transcript.trim()
-      console.log('[STT] Heard:', text)
       if (text) sendToBackend(text)
     }
 
@@ -374,7 +367,6 @@ function speakWithBrowser(text, sessionId, onDone) {
     }
 
     recognition.onend = () => {
-      console.log('[STT] Recognition ended')
       setIsListening(false)
       isListeningRef.current = false
       // Do NOT call startListening here — sendToBackend handles the restart
@@ -388,7 +380,6 @@ function speakWithBrowser(text, sessionId, onDone) {
 
   function handleMicClick() {
     if (!isActive) {
-      console.log('[MIC] Activating agent')
       setIsActive(true)
       isActiveRef.current = true
       setMessages([])
@@ -398,14 +389,12 @@ function speakWithBrowser(text, sessionId, onDone) {
     }
 
     if (isSpeakingRef.current) {
-      console.log('[MIC] Interrupting AI speech')
       stopAudio()
       setTimeout(() => startListening(), 150)
       return
     }
 
     if (isListeningRef.current) {
-      console.log('[MIC] Stopping listen manually')
       stopListeningOnly()
     } else {
       startListening()
@@ -421,7 +410,7 @@ function speakWithBrowser(text, sessionId, onDone) {
     isThinkingRef.current = false
     setIsActive(false)
     isActiveRef.current = false
-    console.log('[AGENT] Session ended')
+    
   }
 
   return {

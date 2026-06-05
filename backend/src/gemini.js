@@ -170,9 +170,9 @@ if (toolCallParts.length > 0) {
 
   for (const toolCallPart of toolCallParts) {
     const { name, args } = toolCallPart.functionCall
-    console.log(`🔧 Tool: ${name}`, args)
+  
     const toolResult = await toolFunctions[name](args)
-    console.log(`✅ Result:`, toolResult)
+    
 
     messagesWithTools = [
       ...messagesWithTools,
