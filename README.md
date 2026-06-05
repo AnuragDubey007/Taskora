@@ -143,7 +143,7 @@ taskora/
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/your-username/taskora.git
+git clone https://github.com/AnuragDubey007/Taskora.git
 cd taskora
 ```
 
@@ -179,7 +179,7 @@ npm install
 Create `frontend/.env`:
 
 ```env
-VITE_API_URL=http://localhost:3001
+VITE_API_URL=https://taskora-0kde.onrender.com
 ```
 
 Start the frontend:
