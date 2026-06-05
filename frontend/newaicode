@@ -1,0 +1,414 @@
+// frontend/src/hooks/useVoiceAgent.js
+import { useState, useEffect, useRef } from 'react'
+import useTaskStore from '../store/taskStore'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+
+function useVoiceAgent() {
+  // ── UI state (for rendering only) ────────────────────────────
+  const [isListening, setIsListening] = useState(false)
+  const [isSpeaking,  setIsSpeaking]  = useState(false)
+  const [isThinking,  setIsThinking]  = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
+  const [isActive,    setIsActive]    = useState(false)
+  const [messages,    setMessages]    = useState([])
+
+  // ── Refs: source of truth for logic (never stale in closures) ─
+  // RULE: Always set BOTH the state AND the ref together. Never use useEffect to sync.
+  const isListeningR = useRef(false)
+  const isSpeakingR  = useRef(false)
+  const isThinkingR  = useRef(false)
+  const isActiveR    = useRef(false)
+
+  const historyRef      = useRef([])
+  const audioRef        = useRef(null)
+  const recognitionRef  = useRef(null)
+  const noSpeechTimer   = useRef(null)
+  const speakCalledRef  = useRef(false)  // guard: prevent double-speak
+
+  // ── Store ─────────────────────────────────────────────────────
+  const addTask       = useTaskStore(s => s.addTask)
+  const updateTask    = useTaskStore(s => s.updateTask)
+  const setTasks      = useTaskStore(s => s.setTasks)
+  const setLoading    = useTaskStore(s => s.setLoading)
+  const setNewTaskId  = useTaskStore(s => s.setNewTaskId)
+  const setConfirmCard = useTaskStore(s => s.setConfirmCard)
+  const setDeletingId = useTaskStore(s => s.setDeletingId)
+  const setUpdatingId = useTaskStore(s => s.setUpdatingId)
+
+  // ── Health check ──────────────────────────────────────────────
+  useEffect(() => {
+    fetch(`${API_URL}/api/health`)
+      .then(r => r.ok ? setIsConnected(true) : setIsConnected(false))
+      .catch(() => setIsConnected(false))
+  }, [])
+
+  // ── Load tasks on mount ───────────────────────────────────────
+  useEffect(() => {
+    setLoading(true)
+    fetch(`${API_URL}/api/tasks`)
+      .then(r => r.json())
+      .then(d => { if (d.tasks) setTasks(d.tasks) })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  // ── Helpers: set state + ref together ────────────────────────
+  function setListening(val) { isListeningR.current = val; setIsListening(val) }
+  function setSpeaking(val)  { isSpeakingR.current  = val; setIsSpeaking(val)  }
+  function setThinking(val)  { isThinkingR.current  = val; setIsThinking(val)  }
+  function setActive(val)    { isActiveR.current    = val; setIsActive(val)    }
+
+  function addMessage(role, text) {
+    setMessages(prev => [...prev, { role, text, id: Date.now() + Math.random() }])
+  }
+
+  // ── Stop any playing audio immediately ────────────────────────
+  function stopAudio() {
+    console.log('[AUDIO] stopAudio called')
+    if (audioRef.current) {
+      audioRef.current.onended = null   // prevent onended from firing after manual stop
+      audioRef.current.onerror = null
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+    setSpeaking(false)
+    speakCalledRef.current = false
+  }
+
+  // ── TTS: browser fallback ─────────────────────────────────────
+  function speakWithBrowser(text, onDone) {
+    console.log('[TTS:browser] Speaking:', text.slice(0, 60))
+
+    // voices may not be loaded yet on first call
+    let voices = window.speechSynthesis.getVoices()
+    if (!voices.length) {
+      const handler = () => {
+        window.speechSynthesis.onvoiceschanged = null
+        speakWithBrowser(text, onDone)
+      }
+      window.speechSynthesis.onvoiceschanged = handler
+      return
+    }
+
+    const utter = new SpeechSynthesisUtterance(text)
+    utter.rate  = 1.05
+    utter.pitch = 0.9
+
+    const preferred = voices.find(v =>
+      v.name.includes('Google UK English Male') ||
+      v.name.includes('Google US English') ||
+      v.name.includes('Daniel') ||
+      v.name.includes('Alex')
+    )
+    if (preferred) utter.voice = preferred
+
+    const done = () => {
+      console.log('[TTS:browser] Done')
+      setSpeaking(false)
+      onDone()
+    }
+    utter.onend   = done
+    utter.onerror = (e) => {
+      // 'interrupted' means stopAudio() was called — that's intentional, not an error
+      if (e.error !== 'interrupted' && e.error !== 'canceled') {
+        console.warn('[TTS:browser] error:', e.error)
+      }
+      setSpeaking(false)
+      onDone()
+    }
+
+    setThinking(false)
+    setSpeaking(true)
+    window.speechSynthesis.speak(utter)
+  }
+
+  // ── TTS: main function — backend first, browser fallback ──────
+  // Returns a Promise that resolves when speech FINISHES
+  function speakText(text) {
+    // Guard: if already called and pending, skip
+    if (speakCalledRef.current) {
+      console.warn('[TTS] speakText called while already speaking — ignoring duplicate')
+      return Promise.resolve()
+    }
+    speakCalledRef.current = true
+
+    stopAudio()
+    console.log('[TTS] speakText:', text.slice(0, 60))
+
+    return new Promise((resolve) => {
+      const done = () => {
+        speakCalledRef.current = false
+        resolve()
+      }
+
+      fetch(`${API_URL}/api/tts`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text })
+      })
+        .then(res => {
+          if (!res.ok) throw new Error(`TTS HTTP ${res.status}`)
+          return res.blob()
+        })
+        .then(blob => {
+          const url   = URL.createObjectURL(blob)
+          const audio = new Audio(url)
+          audioRef.current = audio
+
+          audio.onended = () => {
+            console.log('[TTS:audio] ended')
+            audioRef.current = null
+            URL.revokeObjectURL(url)
+            setSpeaking(false)
+            done()
+          }
+
+          audio.onerror = () => {
+            console.warn('[TTS:audio] error, browser fallback')
+            audioRef.current = null
+            URL.revokeObjectURL(url)
+            setSpeaking(false)
+            speakCalledRef.current = false   // reset so browser speak can set it
+            speakWithBrowser(text, done)
+          }
+
+          setThinking(false)
+          setSpeaking(true)
+
+          audio.play().catch(playErr => {
+            console.warn('[TTS:audio] play() blocked:', playErr.message)
+            audioRef.current = null
+            URL.revokeObjectURL(url)
+            setSpeaking(false)
+            speakCalledRef.current = false
+            speakWithBrowser(text, done)
+          })
+        })
+        .catch(err => {
+          console.warn('[TTS] Backend failed:', err.message, '— browser fallback')
+          speakCalledRef.current = false
+          speakWithBrowser(text, done)
+        })
+    })
+  }
+
+  // ── Handle task store updates from AI actions ─────────────────
+  function handleAction(action, actionData) {
+    if (!action || !actionData) return
+    console.log('[ACTION]', action, actionData)
+
+    const refetch = () =>
+      fetch(`${API_URL}/api/tasks`).then(r => r.json()).then(d => { if (d.tasks) setTasks(d.tasks) }).catch(console.error)
+
+    if (action === 'create_task' && actionData.task) {
+      addTask(actionData.task)
+      setNewTaskId(actionData.task._id)
+      setConfirmCard({ title: 'Task Created', desc: actionData.task.name, glow: 'new-glow' })
+      setTimeout(() => { setNewTaskId(null); setConfirmCard(null) }, 2000)
+    }
+
+    if (action === 'update_task' && actionData.task) {
+      setUpdatingId(actionData.task._id)
+      updateTask(actionData.task)
+      setConfirmCard({ title: 'Task Updated', desc: actionData.task.name, glow: 'update-glow' })
+      setTimeout(() => { setUpdatingId(null); setConfirmCard(null) }, 2000)
+    }
+
+    if (action === 'delete_task') {
+      if (actionData.taskId) setDeletingId(actionData.taskId)
+      setConfirmCard({ title: 'Task Deleted', desc: actionData.message || 'Task removed', glow: 'delete-glow' })
+      setTimeout(() => {
+        refetch()
+        setDeletingId(null)
+        setConfirmCard(null)
+      }, 1500)
+    }
+
+    if (action === 'get_all_tasks' || action === 'get_tasks_by_time_range') {
+      refetch()
+    }
+
+    if (action === 'find_tasks_by_name' && actionData.tasks?.length > 0) {
+      const task = actionData.tasks[0]
+      setConfirmCard({ title: task.name, desc: task.details || task.time || 'Task found', glow: '' })
+    }
+  }
+
+  // ── Send user text to backend → get reply → speak it ─────────
+  async function sendToBackend(userText) {
+    stopListeningOnly()
+    setThinking(true)
+    addMessage('user', userText)
+    console.log('[CHAT] →', userText)
+
+    try {
+      const res = await fetch(`${API_URL}/api/chat`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ message: userText, history: historyRef.current })
+      })
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      if (!data.success) throw new Error(data.message || 'Backend error')
+
+      historyRef.current = data.history || []
+      addMessage('ai', data.reply)
+
+      if (data.action) handleAction(data.action, data.actionData)
+
+      console.log('[CHAT] ← reply:', data.reply.slice(0, 80))
+
+      // speakText clears isThinking when audio starts playing
+      await speakText(data.reply)
+
+    } catch (err) {
+      console.error('[CHAT] Error:', err.message)
+      setThinking(false)
+      const msg = 'Sorry, something went wrong. Please try again.'
+      addMessage('ai', msg)
+      await speakText(msg)
+    }
+
+    // Speech finished — resume listening if still active
+    console.log('[CHAT] Done. Resuming listen. active=', isActiveR.current)
+    if (isActiveR.current && !isListeningR.current && !isThinkingR.current && !isSpeakingR.current) {
+      startListening()
+    }
+  }
+
+  // ── Stop recognition without touching audio ───────────────────
+  function stopListeningOnly() {
+    clearTimeout(noSpeechTimer.current)
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort() } catch (_) {}
+      recognitionRef.current = null
+    }
+    setListening(false)
+  }
+
+  // ── Start recognition ─────────────────────────────────────────
+  function startListening() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) {
+      alert('Please use Chrome or Edge — voice input not supported in this browser.')
+      return
+    }
+
+    // Don't start if busy
+    if (isListeningR.current || isThinkingR.current || isSpeakingR.current) {
+      console.log('[STT] busy — skip start. L:', isListeningR.current, 'T:', isThinkingR.current, 'S:', isSpeakingR.current)
+      return
+    }
+
+    stopListeningOnly()
+
+    const recognition = new SR()
+    recognition.lang            = 'en-US'
+    recognition.interimResults  = false
+    recognition.continuous      = false
+    recognition.maxAlternatives = 1
+    recognitionRef.current      = recognition
+
+    recognition.onstart = () => {
+      console.log('[STT] started')
+      setListening(true)
+    }
+
+    recognition.onresult = (event) => {
+      clearTimeout(noSpeechTimer.current)
+      const text = event.results[0][0].transcript.trim()
+      console.log('[STT] heard:', text)
+      setListening(false)
+      if (text) sendToBackend(text)
+    }
+
+    recognition.onerror = (event) => {
+      console.warn('[STT] error:', event.error)
+      setListening(false)
+
+      if (event.error === 'no-speech') {
+        noSpeechTimer.current = setTimeout(() => {
+          if (!isSpeakingR.current && !isThinkingR.current && isActiveR.current) {
+            console.log('[STT] no-speech → restart')
+            startListening()
+          }
+        }, 600)
+      } else if (event.error === 'not-allowed') {
+        addMessage('ai', 'Microphone access denied. Please allow mic permissions.')
+        setActive(false)
+      }
+    }
+
+    recognition.onend = () => {
+      console.log('[STT] ended')
+      setListening(false)
+    }
+
+    try {
+      recognition.start()
+    } catch (err) {
+      console.warn('[STT] start error (safe to ignore):', err.message)
+    }
+  }
+
+  // ── Mic button ────────────────────────────────────────────────
+  function handleMicClick() {
+    // First click: activate session
+    if (!isActiveR.current) {
+      console.log('[MIC] activate session')
+      setActive(true)
+      setMessages([])
+      historyRef.current = []
+      speakCalledRef.current = false
+      setTimeout(() => startListening(), 100)
+      return
+    }
+
+    // AI is speaking: interrupt it
+    if (isSpeakingR.current) {
+      console.log('[MIC] interrupt speech')
+      stopAudio()
+      setTimeout(() => startListening(), 150)
+      return
+    }
+
+    // Toggle listening
+    if (isListeningR.current) {
+      console.log('[MIC] stop listening')
+      stopListeningOnly()
+    } else {
+      startListening()
+    }
+  }
+
+  // ── End session ───────────────────────────────────────────────
+  function clearChat() {
+    stopAudio()
+    stopListeningOnly()
+    historyRef.current = []
+    speakCalledRef.current = false
+    setMessages([])
+    setThinking(false)
+    setActive(false)
+    console.log('[AGENT] session ended')
+  }
+
+  return {
+    isListening,
+    isSpeaking,
+    isThinking,
+    isPanelOpen: isActive,
+    isConnected,
+    messages,
+    handleMicClick,
+    clearChat,
+  }
+}
+
+export default useVoiceAgent
